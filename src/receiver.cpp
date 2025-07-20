@@ -13,6 +13,9 @@
  * so that a host computer can then do whatever is needed with it (i.e.
  * send out to IP network via MQTT, or place into a database, etc.)
  *
+ * DISCLAIMER: The code is in no way warranted to be fit for any purpose at
+ * all. In fact it is almost certainly "buggy as hell". You have been warned.
+ *
  * Yvan Seth <allotment.sensors@seth.id.au>
  * https://yvan.seth.id.au/tag/lora.html
  */
@@ -80,7 +83,7 @@ struct rxdata {
     uint8_t wtf; // possibly an extra byte in the received data here? what is it? padding?
     int16_t rssi;
     uint16_t src;
-    uint16_t dst; // see LoRaEMB on page 42: https://www.embit.eu/wp-content/uploads/2020/10/ebi-LoRa_rev1.0.1.pdf
+    uint16_t dst;
 
     // our data starts here
     uint8_t charge_state; // the charge status as supplied by Melopero library - actual struct +3 bytes padding/alignment
@@ -93,7 +96,7 @@ struct rxdata {
     uint8_t checksum; 
 };
 
-// FIXME: error detection - format, length, etc - this code is unsafe
+// FIXME: error detection - format, length, etc - this code is **UNSAFE**
 uint8_t * deserialise_i16(uint8_t * buf, int16_t * val) {
     uint16_t uval = 0;
     uval |= ((uint16_t)buf[0]) << 8;
@@ -197,27 +200,42 @@ int main() {
     melopero.enablelWs2812(true);
     while (1) {
        
-        printf("\n=============================================\n");
+        // simple LED on
+        gpio_put(23, 1);
+
+        printf("\n============================================\n");
 
         // print out the battery charging state, also set LED colour code
         printf("Battery: %d (", melopero.getChargerStatus());
         if (melopero.isCharging()) { 
             printf("charging)\n");
+            // yellow
             melopero.setWs2812Color(255, 255, 0, 0.1);  
         } 
         else if (melopero.isFullyCharged()) {
             printf("charged)\n");
+            // green
             melopero.setWs2812Color(0, 255, 0, 0.05); 
         } 
         else if (melopero.hasRecoverableFault()) {
             printf("fault: recoverable)\n");
+            // blue
             melopero.setWs2812Color(0, 0, 255, 0.05);  
         } 
         else if (melopero.hasNonRecoverableFault()) {
             printf("fault: non-recoverable)\n");
-            melopero.setWs2812Color(255, 255, 255, 0.25);  
+            // red
+            melopero.setWs2812Color(255, 0, 0, 0.1);  
         }
-        sleep_ms(500);  
+        // NOTE: there seems to be an error in the charging on these
+        // boards where it never reaches full charge and then hits a 
+        // timeout and enters non-recoverable error, but then this is
+        // reset by external power loss (i.e. no light on solar
+        // overnight) - though this doesn't help if you're using
+        // solar+battery as the external power source.
+        // 
+        // NOTE2: if there is no battery plugged in this just flips
+        // between charging and charged status.
 
         // check the temperature of the RP2350
         float voltage = readADCVoltage( 4 );
@@ -225,23 +243,28 @@ int main() {
         printf( "RP2350 Temperature: %0.2f C\n", temp );
 
         // read received LoRa data, if available
-        uint8_t rxbuff[sizeof(struct rxdata)]; // at least enough for our expected data
+        uint8_t rxbuff[sizeof(struct rxdata)]; // at least big enough for our *expected* data
         size_t rxbuff_ptr = 0;
+        bool verbose = false; 
         if (melopero.checkRxFifo(500)) { // if there is data received...
             // TODO: this really needs some sort of validation
             do {
-                printf("rx: ");
+                if (verbose) printf("rx: ");
                 for (size_t i = 0; i < melopero.responseLen; i++) {
                     if (rxbuff_ptr < sizeof(rxbuff)) {
                         rxbuff[rxbuff_ptr] = melopero.response[i];
-                        printf("0x%02X ", rxbuff[rxbuff_ptr]);
+                        if (verbose) printf("0x%02X ", rxbuff[rxbuff_ptr]);
                     } else {
-                        // discarded excess data
-                        printf("(0x%02X) ", melopero.response[i]);
-                    }
+                        // more data than buffer holds received, we just ignore it
+                        if (verbose) {
+                            printf("(0x%02X) ", melopero.response[i]);
+                        } else {
+                            break;
+                        }
+                    } 
                     rxbuff_ptr++;
                 }
-                printf("\n");
+                if (verbose) printf("\n");
             } while (melopero.checkRxFifo(500)); // Keep checking the FIFO for new data
                                              
             // NOTE: the length could be < or > actual buffer length
@@ -272,7 +295,10 @@ int main() {
             printf("nothing in the rx fifo\n");
         }
 
-        // take a nap
+        // simple LED off
+        gpio_put(23, 0);
+
+        // check every second for recieved data
         sleep_ms(1000);
     }
 

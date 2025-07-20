@@ -1,3 +1,24 @@
+/**
+ * Melopero Perpetuo LoRa - Allotment Telemetry Sender
+ *
+ * This code began life as the Melopero sample code the Perpetuo LoRa board.
+ * This can be found here: https://github.com/melopero/Melopero_Perpetuo_Lora
+ *
+ * As per their code I choose to continue the MIT licencing for this.
+ *
+ * This is the code for a LoRa reciever note that collects the data from
+ * one or many LoRa sender nodes which transmit sensor data from various
+ * points on an allotment or similar environment where you may want to
+ * record sensor data. The sensor data is output via the serial console
+ * so that a host computer can then do whatever is needed with it (i.e.
+ * send out to IP network via MQTT, or place into a database, etc.)
+ *
+ * DISCLAIMER: The code is in no way warranted to be fit for any purpose at
+ * all. In fact it is almost certainly "buggy as hell". You have been warned.
+ *
+ * Yvan Seth <allotment.sensors@seth.id.au>
+ * https://yvan.seth.id.au/tag/lora.html
+ */
 #include <cstdio>
 #include <vector>
 #include <numeric>
@@ -9,13 +30,16 @@
 #include "hardware/adc.h"
 #include "MeloperoPerpetuo.h"
 
+// The number of times to take an ADC reading to get an average ADC reading
 static const int ADC_SAMPLE_COUNT = 16;
 
 /**
  * Read a given ADC value, returns a voltage value.
  *
  * Actually reads ACD_SAMPLE_COUNT values and returns an average after an
- * outlier elimination filter.
+ * outlier elimination filter. I don't know how necessary this is on the
+ * RP2350 platform, but also it probably doesn't hurt aside from a little
+ * more power usage I guess.
  */
 float readADCVoltage( int adc ) { std::vector<uint16_t> values;
 
@@ -56,7 +80,7 @@ float readADCVoltage( int adc ) { std::vector<uint16_t> values;
     return adc_volts;
 }
 
-// this is our data transfer/packet struct - note: it isn't platform/endian portable
+// This is our data transfer/packet struct
 struct txdata {
     uint16_t options; // options as defined page 42: https://www.embit.eu/wp-content/uploads/2020/10/ebi-LoRa_rev1.0.1.pdf
     uint16_t dest; // destination id, 0xFFFF for broadcast
@@ -66,6 +90,7 @@ struct txdata {
     float vin; // supply voltage, i.e. USB, solar, or battery
 };
 
+// Serialisation functions
 uint8_t* serialise_u8(uint8_t* buf, uint8_t val) {
     buf[0] = val;
     return buf + 1;
@@ -170,6 +195,7 @@ int main() {
     adc_gpio_init(26);
     adc_gpio_init(27);
     adc_set_temp_sensor_enabled(true);
+    melopero.enablelWs2812(true);
     while (1) {
 
         ////////////////////////////////////////////////////////
@@ -178,53 +204,54 @@ int main() {
         // simple LED on
         gpio_put(23, 1); 
 
-        // cycle the RGB LEDS - just for fun
-        melopero.enablelWs2812(true);
-        melopero.setWs2812Color(255, 0, 0, 0.2);  
-        sleep_ms(500);  
-        melopero.setWs2812Color(0, 255, 0, 0.2);  
-        sleep_ms(500);  
-        melopero.setWs2812Color(0, 0, 255, 0.2);  
-        sleep_ms(500);  
-        melopero.setWs2812Color(0, 0, 0, 0);  
-        melopero.enablelWs2812(false);
-
         ////////////////////////////////////////////////////////
         // read sensor values
         printf("\n============================================\n");
 
+        // the sensor data struct
         struct txdata txd = {};
+        // set header values
         txd.options = 0;
-        txd.dest = 0xFFFF;
+        txd.dest = 0xFFFF; // broadcast "address"
 
         // print out the battery charging state 
         txd.charge_state = melopero.getChargerStatus();
         printf("Battery: %d (", txd.charge_state);
         if (melopero.isCharging()) { 
             printf("charging)\n");
+            // yellow
             melopero.setWs2812Color(255, 255, 0, 0.1);  
         } 
         else if (melopero.isFullyCharged()) {
             printf("charged)\n");
+            // green
             melopero.setWs2812Color(0, 255, 0, 0.05); 
         } 
         else if (melopero.hasRecoverableFault()) {
             printf("fault: recoverable)\n");
+            // blue
             melopero.setWs2812Color(0, 0, 255, 0.05);  
         } 
         else if (melopero.hasNonRecoverableFault()) {
             printf("fault: non-recoverable)\n");
-            melopero.setWs2812Color(255, 255, 255, 0.25);  
+            // red
+            melopero.setWs2812Color(255, 0, 0, 0.1);  
         }
-        sleep_ms(500);  
-        melopero.setWs2812Color(0, 0, 0, 0);  
+        // NOTE: there seems to be an error in the charging on these
+        // boards where it never reaches full charge and then hits a 
+        // timeout and enters non-recoverable error, but then this is
+        // reset by external power loss (i.e. no light on solar
+        // overnight) - though this doesn't help if you're using
+        // solar+battery as the external power source.
+        // 
+        // NOTE2: if there is no battery plugged in this just flips
+        // between charging and charged status.
 
         // flip the enable on the VSEN on/off each iteration, this is just
         // testing it can turn an LED on/off if you like, or enable/disable
         // other external hardware (thus saving power, only power on sensors
         // to read data every 5 minutes, say...)
         int vsen = gpio_get( 0 );
-        printf( "vsen: %d\n", vsen );
         if ( vsen ) {
             printf("vsen off\n");
             gpio_put( 0, 0 );
