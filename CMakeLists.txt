@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.12)
 
-# Specify the project name
-project(HortiTel)
-
 # Pull in SDK (must be before project)
 include(pico/pico_sdk_import.cmake)
 include(pico/pico_extras_import_optional.cmake)
+
+# Specify the project name
+project(HortiTel C CXX ASM)
 
 # Initialize the Pico SDK
 pico_sdk_init()
