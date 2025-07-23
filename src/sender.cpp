@@ -198,14 +198,9 @@ int main() {
     melopero.enablelWs2812(true);
     while (1) {
 
-        ////////////////////////////////////////////////////////
-        // do a litte dance
-
-        // simple LED on
+        // simple LED on whilst executing the loop body
         gpio_put(23, 1); 
 
-        ////////////////////////////////////////////////////////
-        // read sensor values
         printf("\n============================================\n");
 
         // the sensor data struct
@@ -214,6 +209,7 @@ int main() {
         txd.options = 0;
         txd.dest = 0xFFFF; // broadcast "address"
 
+        ///////////////////////////////////////////////////////////////////////
         // print out the battery charging state 
         txd.charge_state = melopero.getChargerStatus();
         printf("Battery: %d (", txd.charge_state);
@@ -237,16 +233,19 @@ int main() {
             // red
             melopero.setWs2812Color(255, 0, 0, 0.1);  
         }
-        // NOTE: there seems to be an error in the charging on these
-        // boards where it never reaches full charge and then hits a 
-        // timeout and enters non-recoverable error, but then this is
-        // reset by external power loss (i.e. no light on solar
-        // overnight) - though this doesn't help if you're using
-        // solar+battery as the external power source.
-        // 
-        // NOTE2: if there is no battery plugged in this just flips
-        // between charging and charged status.
 
+        // Note: If there is no battery plugged in this just flips between
+        // charging and charged status. If there it a battery but no input
+        // power then it seems to always report 'fully charged' so I think for
+        // full power state awareness you also need to be able to check supply
+        // voltage and ideally also battery/charge voltage.  I have experienced
+        // some slight oddness from the charging circuit where it sometimes
+        // never fully charges, hits a timeout, and reports
+        // non-recoverable-error... this status is reset by flipping the
+        // external power off-and-on-again.
+
+
+        ///////////////////////////////////////////////////////////////////////
         // flip the enable on the VSEN on/off each iteration, this is just
         // testing it can turn an LED on/off if you like, or enable/disable
         // other external hardware (thus saving power, only power on sensors
@@ -260,6 +259,9 @@ int main() {
             gpio_put( 0, 1 );
         }
 
+
+        ///////////////////////////////////////////////////////////////////////
+        // read sensor values
         // check the temperature of the RP2350
         float voltage = readADCVoltage( 4 );
         txd.mcu_temp = 27.0 - ((voltage - 0.706) / 0.001721);
@@ -275,7 +277,7 @@ int main() {
         txd.vin = (adc1_v * (98600 + 14890)) / 14890; // measured values of volage divider 
         printf( "Supply Voltage: %0.2fV\n", txd.vin );
 
-        ////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////////
         // send some data
         uint8_t sendbuf[sizeof(txdata)]; // at least big enough...
         size_t data_length = serialise_txdata(&txd, sendbuf);

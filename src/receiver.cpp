@@ -200,11 +200,12 @@ int main() {
     melopero.enablelWs2812(true);
     while (1) {
        
-        // simple LED on
+        // simple LED on whilst loop body is executing
         gpio_put(23, 1);
 
         printf("\n============================================\n");
 
+        ///////////////////////////////////////////////////////////////////////
         // print out the battery charging state, also set LED colour code
         printf("Battery: %d (", melopero.getChargerStatus());
         if (melopero.isCharging()) { 
@@ -227,22 +228,27 @@ int main() {
             // red
             melopero.setWs2812Color(255, 0, 0, 0.1);  
         }
-        // NOTE: there seems to be an error in the charging on these
-        // boards where it never reaches full charge and then hits a 
-        // timeout and enters non-recoverable error, but then this is
-        // reset by external power loss (i.e. no light on solar
-        // overnight) - though this doesn't help if you're using
-        // solar+battery as the external power source.
-        // 
-        // NOTE2: if there is no battery plugged in this just flips
-        // between charging and charged status.
 
+        // Note: If there is no battery plugged in this just flips between
+        // charging and charged status. If there it a battery but no input
+        // power then it seems to always report 'fully charged' so I think for
+        // full power state awareness you also need to be able to check supply
+        // voltage and ideally also battery/charge voltage.  I have experienced
+        // some slight oddness from the charging circuit where it sometimes
+        // never fully charges, hits a timeout, and reports
+        // non-recoverable-error... this status is reset by flipping the
+        // external power off-and-on-again.
+
+
+        ///////////////////////////////////////////////////////////////////////
         // check the temperature of the RP2350
         float voltage = readADCVoltage( 4 );
         float temp = 27.0 - ((voltage - 0.706) / 0.001721); // values from RP2350 documentation
         printf( "RP2350 Temperature: %0.2f C\n", temp );
 
-        // read received LoRa data, if available
+
+        ///////////////////////////////////////////////////////////////////////
+        // read received LoRa data, and if available print receive data
         uint8_t rxbuff[sizeof(struct rxdata)]; // at least big enough for our *expected* data
         size_t rxbuff_ptr = 0;
         bool verbose = false; 
@@ -267,17 +273,22 @@ int main() {
                 if (verbose) printf("\n");
             } while (melopero.checkRxFifo(500)); // Keep checking the FIFO for new data
                                              
-            // NOTE: the length could be < or > actual buffer length
-            printf( "Received Data:\nlength=%d\ndata={", rxbuff_ptr );
-            for (size_t i = 0; i < sizeof(rxbuff); i++) {
+            // NOTE: the rxbuff_ptr could be < or > actual buffer length
+            printf( "Received Data:\n  length=%d (buflen=%d)\n  data={", rxbuff_ptr, sizeof(rxbuff) );
+            uint32_t checksum = 0;
+            size_t safelen = (rxbuff_ptr < sizeof(rxbuff)) ? rxbuff_ptr : sizeof(rxbuff);
+            for (size_t i = 0; i < safelen ; i++) {
+                if ( i < (safelen - 1) ) checksum += rxbuff[i];
                 printf("0x%02X ", rxbuff[i]);
             }
             printf("}\n");
+            checksum &= 0x000000ff;
+            printf( "  checksum=%02X\n", checksum );
 
             struct rxdata rxd = {};
             deseralise_rxdata( rxbuff, &rxd );
 
-            printf( "Received\n" );
+            printf( "Received:\n" );
             printf( "  Data Length: %u bytes\n", rxd.length );
             printf( "  Options: 0x%08X (bitfield)\n", rxd.options );
             printf( "  WTF: 0x%02X (undocumented field?)\n", rxd.wtf );
