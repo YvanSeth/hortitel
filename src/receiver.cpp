@@ -204,10 +204,11 @@ int main() {
         gpio_put(23, 1);
 
         printf("\n============================================\n");
+        printf( "MCU Board State:\n" );
 
         ///////////////////////////////////////////////////////////////////////
         // print out the battery charging state, also set LED colour code
-        printf("Battery: %d (", melopero.getChargerStatus());
+        printf("  Battery: %d (", melopero.getChargerStatus());
         if (melopero.isCharging()) { 
             printf("charging)\n");
             // yellow
@@ -244,7 +245,7 @@ int main() {
         // check the temperature of the RP2350
         float voltage = readADCVoltage( 4 );
         float temp = 27.0 - ((voltage - 0.706) / 0.001721); // values from RP2350 documentation
-        printf( "RP2350 Temperature: %0.2f C\n", temp );
+        printf( "  RP2350 Temperature: %0.2f C\n", temp );
 
 
         ///////////////////////////////////////////////////////////////////////
@@ -274,7 +275,7 @@ int main() {
             } while (melopero.checkRxFifo(500)); // Keep checking the FIFO for new data
                                              
             // NOTE: the rxbuff_ptr could be < or > actual buffer length
-            printf( "Received Data:\n  length=%d (buflen=%d)\n  data={", rxbuff_ptr, sizeof(rxbuff) );
+            printf( "Received Data Info:\n  length=%d (buflen=%d)\n  data={", rxbuff_ptr, sizeof(rxbuff) );
             uint32_t checksum = 0;
             size_t safelen = (rxbuff_ptr < sizeof(rxbuff)) ? rxbuff_ptr : sizeof(rxbuff);
             for (size_t i = 0; i < safelen ; i++) {
@@ -288,7 +289,7 @@ int main() {
             struct rxdata rxd = {};
             deseralise_rxdata( rxbuff, &rxd );
 
-            printf( "Received:\n" );
+            printf( "Deserialised Packet Info:\n" );
             printf( "  Data Length: %u bytes\n", rxd.length );
             printf( "  Options: 0x%08X (bitfield)\n", rxd.options );
             printf( "  WTF: 0x%02X (undocumented field?)\n", rxd.wtf );
